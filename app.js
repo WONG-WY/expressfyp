@@ -5,19 +5,22 @@ var cookieParser = require("cookie-parser");
 var logger = require("morgan");
 
 var cors = require("cors");
+const passport = require('passport');
+const Auth0Strategy = require('passport-auth0');
+const session = require('express-session');
+const jwt = require('jsonwebtoken');
 
+const mongoose = require('mongoose');
+const dotenv = require('dotenv');
 
+dotenv.config();
 // {
 //   origin: 'http://localhost:5173',
 //   credentials: true // for send cookies or other credentials
 // }));
-
-var indexRouter = require("./routes/index");
-var usersRouter = require("./routes/users");
-
 var app = express();
+const jwtCheck = require('./auth');
 
-// view engine setup
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 
@@ -28,7 +31,40 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
-app.use("/api", indexRouter);
+
+passport.use(new Auth0Strategy({
+  domain: process.env.AUTH0_DOMAIN,
+  clientID: process.env.AUTH0_CLIENTID,
+  clientSecret: process.env.AUTH0_CLIENTSECRET,
+  callbackURL: 'http://localhost:3000/api/auth/callback'
+}, (accessToken, refreshToken, extraParams, profile, done) => {
+  return done(null, profile);
+}));
+
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user, done) => {
+  done(null, user);
+});
+
+// Express session setup
+app.use(session({
+  secret: process.env.GENERALUSER_SESSION_SECRET,
+  resave: false,
+  saveUninitialized: true,
+  cookie: { secure: false }
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+var indexRouter = require("./routes/index");
+var usersRouter = require("./routes/users");
+
+app.use('/api', jwtCheck); //must under passport & session
+app.use("/api", indexRouter); //protected by jwt
 app.use("/users", usersRouter);
 
 // catch 404 and forward to error handler
@@ -46,21 +82,5 @@ app.use(function (err, req, res, next) {
   res.status(err.status || 500);
   res.render("error");
 });
-
-
-//app.use(cors());
-
-//const users = require('./modules/users')
-//router.use('/users', users)
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
-
-dotenv.config();
-
-// mongoose.connect(process.env.MONGO_URI, {
-//   useNewUrlParser: true,
-//   useUnifiedTopology: true,
-// }).then(() => console.log('MongoDB connected'))
-//   .catch(err => console.log(err));
 
 module.exports = app;
